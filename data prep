@@ -1,0 +1,130 @@
+rm(list = ls())
+gc()
+
+
+## ideas
+## larger probability of question tag being different in negative sample
+
+library(openNLP)
+library(stringr)
+
+setwd('C://Work//quora//data')
+## sample data
+f=read.csv('train.csv', header = T)
+# i=sample(1:nrow(f) , 1000)
+# dump=f ## save
+# f=dump
+# table(f$is_duplicate)/nrow(f)
+# f=f[i,]
+
+## manipulation
+f$question1=tolower(f$question1)
+f$question2=tolower(f$question2)
+
+f$question1=gsub("[^[:alnum:] ]", " ", f$question1)
+f$question2=gsub("[^[:alnum:] ]", " ", f$question2)
+
+f$question1=iconv(f$question1, "latin1", "ASCII", sub="")
+f$question2=iconv(f$question2, "latin1", "ASCII", sub="")
+
+# any(grepl("BReAK", iconv(x, "latin1", "ASCII", sub="BReAK")))
+
+f$question1=gsub("\\s+", " ", str_trim(f$question1))
+f$question2=gsub("\\s+", " ", str_trim(f$question2))
+
+# ss=read.csv('sample_submission.csv', header = T)
+
+## subset into respective samples
+positive_sample=f[f$is_duplicate==1,]
+nrow(positive_sample)
+head(positive_sample)
+
+negative_sample=f[f$is_duplicate==0,]
+nrow(negative_sample)
+head(negative_sample)
+
+## question sampler
+question_sampler=function(df,n){
+  paste(df$question1,df$question2, df$is_duplicate, sep = ' BREAK ')[sample(1:nrow(df),n)]
+}
+# word count 
+question_sampler(positive_sample, 100)
+question_sampler(negative_sample, 100)
+
+## match question word tags
+question_tag=c('how', 'what', 'why', 'is', 'does', 'can', 'do', 'which', 'would', 'i', 'if', 'are', 'did', 'has', 'should' , 'was', 'where', 'who', 'could', 'will')
+
+############################# feature 1 - question tag matrix ###############################
+
+## split positve cases 
+p1=strsplit(positive_sample$question1, split = ' ')
+p2=strsplit(positive_sample$question2, split = ' ')
+
+## make question tag on matrix for positive cases
+question_tag_matrix_p=t(mapply(function(x,y) {xor(x,y)}, lapply(p1, function(x) question_tag %in% x), lapply(p2, function(x) question_tag %in% x)))
+
+## difference in the cumulative match of question tags for positive statement
+question_tag_diff_p=mapply(function(x,y) {sum(!is.na(match(question_tag, x)))-sum(!is.na(match(question_tag, y))) }, p1, p2 )
+
+## similar for negative cases
+## split negative cases 
+n1=strsplit(negative_sample$question1, split = ' ')
+n2=strsplit(negative_sample$question2, split = ' ')
+
+## make question tag matrix for positive cases
+question_tag_matrix_n=t(mapply(function(x,y) {xor(x,y) }, lapply(n1, function(x) question_tag %in% x), lapply(n2, function(x) question_tag %in% x)))
+
+## difference in the cumulative match of question tags for negative statement
+question_tag_diff_n=mapply(function(x,y) {(sum(!is.na(match(question_tag, x)))-sum(!is.na(match(question_tag, y)))) }, n1, n2 )
+# range(question_tag_diff_p);range(question_tag_diff_n)
+
+############################ feature 2 - match both the vectors #############################
+
+################### clean the corpus to remove words with <= than length 3 #################
+
+## remove question tags for positive corpus
+wo_question_tag_short_p1=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", positive_sample$question1))))
+wo_question_tag_short_p2=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", positive_sample$question2))))
+
+delta=0.0001
+match_pos_avg=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)+sum(y %in% x)/(length(y)+delta)}, strsplit(wo_question_tag_short_p1, split = ' '), strsplit(wo_question_tag_short_p2, split = ' '))
+
+## remove question tags for negative corpus
+wo_question_tag_short_n1=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", negative_sample$question1))))
+wo_question_tag_short_n2=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", negative_sample$question2))))
+
+match_neg_avg=mapply(function(x,y){ sum(x %in% y)/(length(x)+delta)+sum(y %in% x)/(length(y)+delta)}, strsplit(wo_question_tag_short_n1, split = ' '), strsplit(wo_question_tag_short_n2, split = ' '))
+
+############## feature 3 - count of number of words before and after cleaning ##############
+
+tot_len_p=mapply(function(x,y) {length(x)-length(y)}, p1, p2)
+tot_len_n=mapply(function(x,y) {length(x)-length(y)}, n1, n2)
+
+## for truncated positive 
+trunc_len_p=mapply(function(x,y) {length(x)-length(y)}, strsplit(wo_question_tag_short_p1, split = ' '), strsplit(wo_question_tag_short_p2, split = ' '))
+trunc_len_n=mapply(function(x,y) {length(x)-length(y)}, strsplit(wo_question_tag_short_n1, split = ' '), strsplit(wo_question_tag_short_n2, split = ' '))
+
+############################ feature 4 - word co-occurences of the words ##################
+
+co_occurence_p=sapply(mapply(intersect, p1, p2), length)
+co_occurence_n=sapply(mapply(intersect, n1, n2), length)
+
+## for truncated 
+trunc_co_occurence_p=sapply(mapply(intersect, strsplit(wo_question_tag_short_p1, split = ' '), strsplit(wo_question_tag_short_p2, split = ' ')), length)
+trunc_co_occurence_n=sapply(mapply(intersect, strsplit(wo_question_tag_short_n1, split = ' '), strsplit(wo_question_tag_short_n2, split = ' ')), length)
+
+################################# combine all the variables ############################################################################################################################
+
+pos_cases=as.data.frame(cbind(question_tag_matrix_p,question_tag_diff=question_tag_diff_p,match_avg=match_pos_avg, len=tot_len_p, trunc_len=trunc_len_p, co_occurence=co_occurence_p,  trunc_co_occurence=trunc_co_occurence_p, positive=positive_sample$is_duplicate))
+names(pos_cases)[1:length(question_tag)]=question_tag
+
+neg_cases=as.data.frame(cbind(question_tag_matrix_n,question_tag_diff=question_tag_diff_n,match_avg=match_neg_avg, len=tot_len_n, trunc_len=trunc_len_n, co_occurence=co_occurence_n,  trunc_co_occurence=trunc_co_occurence_n, positive=negative_sample$is_duplicate))
+names(neg_cases)[1:length(question_tag)]=question_tag
+
+all_cases=rbind(pos_cases,neg_cases)
+
+all_cases=all_cases[sample(nrow(all_cases), nrow(all_cases)), ]
+rownames(all_cases)=NULL
+
+
+str(all_cases)
