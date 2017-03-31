@@ -1,0 +1,110 @@
+##################################### Testing #########################################
+
+library(stringr)
+setwd('C://Work//quora//data')
+
+# f1=read.csv('test.csv', header = T)
+# #
+# Save the city object
+# saveRDS(f1, "test_data.rds")
+
+# Load the city object as city
+f1 <- readRDS("test_data.rds")
+
+## manipulation
+f1$question1=tolower(f1$question1)
+f1$question2=tolower(f1$question2)
+
+f1$question1=gsub("[^[:alnum:] ]", " ", f1$question1)
+f1$question2=gsub("[^[:alnum:] ]", " ", f1$question2)
+
+f1$question1=iconv(f1$question1, "latin1", "ASCII", sub="")
+f1$question2=iconv(f1$question2, "latin1", "ASCII", sub="")
+
+# any(grepl("BReAK", iconv(x, "latin1", "ASCII", sub="BReAK")))
+
+f1$question1=gsub("\\s+", " ", str_trim(f1$question1))
+f1$question2=gsub("\\s+", " ", str_trim(f1$question2))
+
+## match question word tags
+question_tag=c('how', 'what', 'why', 'is', 'does', 'can', 'do', 'which', 'would', 'i', 'if', 'are', 'did', 'has', 'should' , 'was', 'where', 'who', 'could', 'will')
+
+# ss=read.csv('sample_submission.csv', header = T)
+
+##################################### split statements as it is ######################################  
+## split cases 
+set1=strsplit(f1$question1, split = ' ')
+set2=strsplit(f1$question2, split = ' ')
+
+######################### clean statements - remove smaller words and question tag ######################
+
+## remove question tags for positive corpus
+clean_set1=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", f1$question1))))
+clean_set2=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", f1$question2))))
+
+############## feature 1 - difference and average of count of words before and after cleaning ############
+
+
+# difference  and average
+diff_len=mapply(function(x,y) {length(x)-length(y)}, set1, set2)
+#
+avg_len=mapply(function(x,y) {(length(x)+length(y))/2}, set1, set2)
+
+## for cleaner statments 
+clean_diff_len=mapply(function(x,y) {length(x)-length(y)}, strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' '))
+#
+clean_avg_len=mapply(function(x,y) {(length(x)+length(y))/2}, strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' '))
+
+############################# feature 2 - question tag matrix ###############################
+
+
+## make question tag on matrix for positive cases
+## xor logic
+# question_tag_matrix=t(mapply(function(x,y) {xor(x,y)}, lapply(set1, function(x) question_tag %in% x), lapply(set2, function(x) question_tag %in% x)))
+
+## or logic
+question_tag_matrix=t(mapply(function(x,y) { x | y}, lapply(set1, function(x) question_tag %in% x), lapply(set2, function(x) question_tag %in% x)))
+
+## average of sum of match from question tags for positive statement
+question_tag_avg=mapply(function(x,y) {(sum(!is.na(match(question_tag, x)))+sum(!is.na(match(question_tag, y))))/2 }, set1, set2 )
+
+
+############################ feature 2 - average ,atch both the vectors #############################
+delta=0.0001
+
+# 
+match_avg_xy=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)},set1, set2)
+match_avg_yx=mapply(function(x,y){sum(y %in% x)/(length(y)+delta)},set1, set2)
+
+# for cleaner statement
+# clean_match_avg=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)+sum(y %in% x)/(length(y)+delta)}, strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' '))
+
+clean_match_avg_xy=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)},strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' '))
+clean_match_avg_yx=mapply(function(x,y){sum(y %in% x)/(length(y)+delta)},strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' '))
+
+############################ feature 4 - word co-occurences of the words ##################
+
+
+######################### all case of intersection, union, ect 
+co_occurence_inter=sapply(mapply(intersect, set1, set2), length)
+
+co_occurence_union=sapply(mapply(union, set1, set2), length)
+
+co_occurence_setdiff=sapply(mapply(setdiff, set1, set2), length)
+
+## for cleaner statement 
+clean_co_occurence_inter=sapply(mapply(intersect, strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' ')), length)
+
+clean_co_occurence_union=sapply(mapply(union, strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' ')), length)
+
+clean_co_occurence_setdiff=sapply(mapply(setdiff, strsplit(clean_set1, split = ' '), strsplit(clean_set2, split = ' ')), length)
+
+################################# combine all the variables ############################################################################################################################
+
+
+testing=data.frame(question_tag_matrix*1, diff_len=diff_len, avg_len=avg_len, clean_diff_len=clean_diff_len, clean_avg_len=clean_avg_len, question_tag_avg=question_tag_avg, match_avg_xy=match_avg_xy, match_avg_yx=match_avg_yx, clean_match_avg_xy=clean_match_avg_xy, clean_match_avg_yx=clean_match_avg_yx, co_occurence_inter=co_occurence_inter, co_occurence_union=co_occurence_union, co_occurence_setdiff=co_occurence_setdiff, clean_co_occurence_inter=clean_co_occurence_inter, clean_co_occurence_union=clean_co_occurence_union,clean_co_occurence_setdiff=clean_co_occurence_setdiff)
+names(testing)[1:length(question_tag)]=question_tag
+
+
+
+m <- readRDS("test_data.rds")
