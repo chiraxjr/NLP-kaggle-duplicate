@@ -1,0 +1,186 @@
+
+
+rm(list = ls())
+gc()
+
+setwd('C://Work//quora//data')
+
+## ideas
+## larger probability of question tag being different in negative sample
+
+library(openNLP)
+library(stringr)
+
+## sample data
+# f=read.csv('train.csv', header = T)
+# 
+# # Save the city object
+# saveRDS(f, "train_data.rds")
+
+# Load the city object as city
+f <- readRDS("train_data.rds")
+
+# i=sample(1:nrow(f) , 50000)
+# dump=f ## save
+# f=dump
+# table(f$is_duplicate)/nrow(f)
+# f=f[i,]
+
+## manipulation
+f$question1=tolower(f$question1)
+f$question2=tolower(f$question2)
+
+f$question1=gsub("[^[:alnum:] ]", " ", f$question1)
+f$question2=gsub("[^[:alnum:] ]", " ", f$question2)
+
+f$question1=iconv(f$question1, "latin1", "ASCII", sub="")
+f$question2=iconv(f$question2, "latin1", "ASCII", sub="")
+
+# any(grepl("BReAK", iconv(x, "latin1", "ASCII", sub="BReAK")))
+
+f$question1=gsub("\\s+", " ", str_trim(f$question1))
+f$question2=gsub("\\s+", " ", str_trim(f$question2))
+
+## match question word tags
+question_tag=c('how', 'what', 'why', 'is', 'does', 'can', 'do', 'which', 'would', 'i', 'if', 'are', 'did', 'has', 'should' , 'was', 'where', 'who', 'could', 'will')
+
+# ss=read.csv('sample_submission.csv', header = T)
+
+## subset into respective samples
+positive_sample=f[f$is_duplicate==1,]
+nrow(positive_sample)
+head(positive_sample)
+
+negative_sample=f[f$is_duplicate==0,]
+nrow(negative_sample)
+head(negative_sample)
+
+# ## question sampler
+# question_sampler=function(df,n){
+#     paste(df$question1,df$question2, df$is_duplicate, sep = ' BREAK ')[sample(1:nrow(df),n)]
+# }
+# # word count 
+# question_sampler(positive_sample, 100)
+# question_sampler(negative_sample, 100)
+
+##################################### split statements as it is ######################################  
+## split positive cases 
+p1=strsplit(positive_sample$question1, split = ' ')
+p2=strsplit(positive_sample$question2, split = ' ')
+## split negative cases 
+n1=strsplit(negative_sample$question1, split = ' ')
+n2=strsplit(negative_sample$question2, split = ' ')
+
+######################### clean statements - remove smaller words and question tag ######################
+
+## remove question tags for positive corpus
+clean_p1=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", positive_sample$question1))))
+clean_p2=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", positive_sample$question2))))
+
+## remove question tags for negative corpus
+clean_n1=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", negative_sample$question1))))
+clean_n2=gsub("\\s+", " ", str_trim(gsub("*\\b[[:alpha:]]{1,3}\\b", "",gsub(paste0("\\b(",paste(question_tag, collapse="|"),")\\b"), "", negative_sample$question2))))
+
+
+############## feature 1 - difference and average of count of words before and after cleaning ############
+
+
+# difference  and average
+diff_len_p=mapply(function(x,y) {length(x)-length(y)}, p1, p2)
+diff_len_n=mapply(function(x,y) {length(x)-length(y)}, n1, n2)
+#
+avg_len_p=mapply(function(x,y) {(length(x)+length(y))/2}, p1, p2)
+avg_len_n=mapply(function(x,y) {(length(x)+length(y))/2}, n1, n2)
+
+## for cleaner statments 
+clean_diff_len_p=mapply(function(x,y) {length(x)-length(y)}, strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' '))
+clean_diff_len_n=mapply(function(x,y) {length(x)-length(y)}, strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' '))
+#
+clean_avg_len_p=mapply(function(x,y) {(length(x)+length(y))/2}, strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' '))
+clean_avg_len_n=mapply(function(x,y) {(length(x)+length(y))/2}, strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' '))
+
+
+############################# feature 2 - question tag matrix ###############################
+
+
+## make question tag on matrix for positive cases
+## xor logic
+# question_tag_matrix_p=t(mapply(function(x,y) {xor(x,y)}, lapply(p1, function(x) question_tag %in% x), lapply(p2, function(x) question_tag %in% x)))
+
+## or logic
+question_tag_matrix_p=t(mapply(function(x,y) { x | y}, lapply(p1, function(x) question_tag %in% x), lapply(p2, function(x) question_tag %in% x)))
+
+## average of sum of match from question tags for positive statement
+question_tag_avg_p=mapply(function(x,y) {(sum(!is.na(match(question_tag, x)))+sum(!is.na(match(question_tag, y))))/2 }, p1, p2 )
+
+## similar for negative cases
+
+## xor logic
+# question_tag_matrix_p=t(mapply(function(x,y) {xor(x,y)}, lapply(n1, function(x) question_tag %in% x), lapply(n2, function(x) question_tag %in% x)))
+
+## or logic
+question_tag_matrix_n=t(mapply(function(x,y) { x | y}, lapply(n1, function(x) question_tag %in% x), lapply(n2, function(x) question_tag %in% x)))
+
+## average of sum of match from question tags for positive statement
+question_tag_avg_n=mapply(function(x,y) {(sum(!is.na(match(question_tag, x)))+sum(!is.na(match(question_tag, y))))/2 }, n1, n2 )
+
+############################ feature 2 - average ,atch both the vectors #############################
+delta=0.0001
+
+# 
+match_avg_p_xy=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)},p1, p2)
+match_avg_p_yx=mapply(function(x,y){sum(y %in% x)/(length(y)+delta)},p1, p2)
+
+match_avg_n_xy=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)},n1, n2)
+match_avg_n_yx=mapply(function(x,y){sum(y %in% x)/(length(y)+delta)},n1, n2)
+
+# for cleaner statement
+# clean_match_avg_p=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)+sum(y %in% x)/(length(y)+delta)}, strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' '))
+
+clean_match_avg_p_xy=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)},strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' '))
+clean_match_avg_p_yx=mapply(function(x,y){sum(y %in% x)/(length(y)+delta)},strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' '))
+
+clean_match_avg_n_xy=mapply(function(x,y){sum(x %in% y)/(length(x)+delta)},strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' '))
+clean_match_avg_n_yx=mapply(function(x,y){sum(y %in% x)/(length(y)+delta)},strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' '))
+
+############################ feature 4 - word co-occurences of the words ##################
+
+
+######################### all case of intersection, union, ect 
+co_occurence_inter_p=sapply(mapply(intersect, p1, p2), length)
+co_occurence_inter_n=sapply(mapply(intersect, n1, n2), length)
+
+co_occurence_union_p=sapply(mapply(union, p1, p2), length)
+co_occurence_union_n=sapply(mapply(union, n1, n2), length)
+
+co_occurence_setdiff_p=sapply(mapply(setdiff, p1, p2), length)
+co_occurence_setdiff_n=sapply(mapply(setdiff, n1, n2), length)
+
+## for cleaner statement 
+clean_co_occurence_inter_p=sapply(mapply(intersect, strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' ')), length)
+clean_co_occurence_inter_n=sapply(mapply(intersect, strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' ')), length)
+
+clean_co_occurence_union_p=sapply(mapply(union, strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' ')), length)
+clean_co_occurence_union_n=sapply(mapply(union, strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' ')), length)
+
+clean_co_occurence_setdiff_p=sapply(mapply(setdiff, strsplit(clean_p1, split = ' '), strsplit(clean_p2, split = ' ')), length)
+clean_co_occurence_setdiff_n=sapply(mapply(setdiff, strsplit(clean_n1, split = ' '), strsplit(clean_n2, split = ' ')), length)
+
+################################# combine all the variables ############################################################################################################################
+
+
+pos_cases=data.frame(question_tag_matrix_p*1, diff_len=diff_len_p, avg_len=avg_len_p, clean_diff_len=clean_diff_len_p, clean_avg_len=clean_avg_len_p, question_tag_avg=question_tag_avg_p, match_avg_xy=match_avg_p_xy, match_avg_yx=match_avg_p_yx, clean_match_avg_xy=clean_match_avg_p_xy, clean_match_avg_yx=clean_match_avg_p_yx, co_occurence_inter=co_occurence_inter_p, co_occurence_union=co_occurence_union_p, co_occurence_setdiff=co_occurence_setdiff_p, clean_co_occurence_inter=clean_co_occurence_inter_p, clean_co_occurence_union=clean_co_occurence_union_p,clean_co_occurence_setdiff=clean_co_occurence_setdiff_p, positive=positive_sample$is_duplicate)
+names(pos_cases)[1:length(question_tag)]=question_tag
+
+
+neg_cases=data.frame(question_tag_matrix_n*1, diff_len=diff_len_n, avg_len=avg_len_n, clean_diff_len=clean_diff_len_n, clean_avg_len=clean_avg_len_n, question_tag_avg=question_tag_avg_n, match_avg_xy=match_avg_n_xy, match_avg_yx=match_avg_n_yx, clean_match_avg_xy=clean_match_avg_n_xy, clean_match_avg_yx=clean_match_avg_n_yx, co_occurence_inter=co_occurence_inter_n, co_occurence_union=co_occurence_union_n, co_occurence_setdiff=co_occurence_setdiff_n, clean_co_occurence_inter=clean_co_occurence_inter_n, clean_co_occurence_union=clean_co_occurence_union_n,clean_co_occurence_setdiff=clean_co_occurence_setdiff_n, positive=negative_sample$is_duplicate)
+names(neg_cases)[1:length(question_tag)]=question_tag
+
+
+all_cases=rbind(pos_cases,neg_cases)
+
+all_cases=all_cases[sample(nrow(all_cases), nrow(all_cases)), ]
+rownames(all_cases)=NULL
+
+str(all_cases)
+
