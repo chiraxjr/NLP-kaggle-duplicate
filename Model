@@ -1,0 +1,37 @@
+
+######################## apply algo to test the accuracy ######################################################################################################################################
+library(caret)
+library(C50)
+## delete as there is a high correlation
+# all_cases$trunc_len=NULL
+# all_cases$trun=NULL
+
+str(all_cases)
+all_cases$positive=as.factor(all_cases$positive)
+names(all_cases)[names(all_cases)=='if']='iff'
+
+intrain<-createDataPartition(y=all_cases$pos,p=0.7,list=FALSE)
+training<-all_cases[intrain,]
+testing<-all_cases[-intrain,]
+
+# fitControl <- trainControl(method = "repeatedcv", number = 3,repeats = 3, returnResamp="all")
+# grid <- expand.grid( .winnow = c(TRUE,FALSE), .trials=c(1,50,100), .model="tree")
+# 
+# mdl<- train(x=as.data.frame(training[,1:(ncol(training)-1)]),y = training$positive,tuneGrid=grid,trControl=fitControl,method="C5.0",verbose=FALSE)
+#  summary(mdl)
+
+m=C5.0(positive ~ . , data =  training, trials = 50)
+
+p=predict( m, testing[,-ncol(testing)])
+confusionMatrix(p, testing$positive, positive = '1')
+
+# saveRDS(m, "c5_model.rds")
+
+dir()
+# random forest 
+# library(randomForest)
+# 
+# rf=randomForest(positive ~ ., data=training, ntree=50)
+# p=predict( rf, testing[,-ncol(testing)])
+# confusionMatrix(p, testing$positive, positive = '1')
+# varImp(rf)
