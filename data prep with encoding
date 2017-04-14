@@ -1,0 +1,71 @@
+2567
+
+library(tm)
+library(tokenizers)
+library(SnowballC)
+library(text2vec)
+
+
+setwd('C://Work//quora//data')
+
+f <- read.csv("train.csv" , encoding = "UTF-8", header = TRUE, stringsAsFactors = FALSE)
+saveRDS(f, 'train_data_w_encod.rds')
+write.csv(f, 'train_w_encod.csv')
+
+f <- readRDS("train_data.rds")
+
+
+i=grep('\u20AC', f$question1)
+x=f$question1[i]
+iconv(x, "latin1", "UTF-8")
+# f=f[sample(1:nrow(f), 300),]
+# f=f[1:200,]
+# 
+
+q1=gsub('\\+', ' plus ', q1)
+q1=gsub('\\^', ' power ', q1)
+q1=gsub('24/7', 'allday', q1)
+q1=gsub('[$]',' dollar ', q1)
+â€œ
+q1=gsub('â€™|â€|â€œ|â€˜|â€ª|â€¦|Â¿|â€“', '', q1)
+q1=gsub('%', ' percentage ', q1)
+q1=iconv(f$question1, "latin1", "ASCII//TRANSLIT")
+q1=gsub("/", ' or ', q1)   ## check again
+q1=gsub("&", 'and', q1)
+q1=gsub("'", '', q1)
+
+q1=stem_tokenizer(as.character(tolower(q1)))
+
+windows = '\x85\xea' 
+
+x <- "i have \u20AC and \u0024 and \u00A3 and \u00A5 and \u20B9 24/7"
+x = 'i have * and .'
+gsub('*', 'multiply')
+
+gsub('\u20AC','euro', x)
+gsub('\u00A3','pound', x)
+gsub('\u00A5','yen', x)
+gsub('\u0024','dollar', x)
+gsub('\u20B9','rupee', x)
+
+
+gsub('[$]','dollar', x)
+
+
+ 
+x='my names is chirayu + chamoli'
+x
+x='When do you use ã‚· instead of ã—?'
+
+iconv(x, "latin1", "ASCII//TRANSLIT")
+iconv(x, "ASCII", "UTF-8")
+?iconv
+
+iconv(x, "ISO_8859-2", "UTF-8")
+
+
+codepages <- setNames(iconvlist(), iconvlist())
+
+
+
+x <- lapply(codepages, function(enc) try(read.csv("train.csv", encoding = enc, , header=TRUE, sep="\t"))) # you get lots of errors/warning here
